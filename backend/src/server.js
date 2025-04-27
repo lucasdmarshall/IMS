@@ -69,14 +69,17 @@ async function connectToDatabase() {
       maxPoolSize: 10 // Maintain up to 10 socket connections
     };
     
-    console.log('Connecting to MongoDB...');
+    console.log('Connecting to MongoDB...', process.env.MONGODB_URI ? 'URI exists' : 'URI missing');
+    console.log('Connection string format check:', process.env.MONGODB_URI?.startsWith('mongodb+srv://') ? 'Valid format' : 'Invalid format');
+    
     const client = await mongoose.connect(process.env.MONGODB_URI, options);
-    console.log('Connected to MongoDB');
+    console.log('Connected to MongoDB successfully');
     
     cachedDb = client;
     return client;
   } catch (error) {
-    console.error('MongoDB connection error:', error);
+    console.error('MongoDB connection error details:', error.name, error.message);
+    console.error('Connection stack:', error.stack);
     throw error;
   }
 }
@@ -174,6 +177,23 @@ app.get('/api/v1/test', (req, res) => {
 // Database connection test endpoint
 app.get('/api/v1/db-test', async (req, res) => {
   try {
+    // First check if environment variables exist
+    const envCheck = {
+      MONGODB_URI: process.env.MONGODB_URI ? 'exists' : 'missing',
+      JWT_SECRET: process.env.JWT_SECRET ? 'exists' : 'missing',
+      NODE_ENV: process.env.NODE_ENV || 'not set'
+    };
+    
+    console.log('Environment check:', envCheck);
+    
+    if (!process.env.MONGODB_URI) {
+      return res.status(500).json({
+        status: 'error',
+        message: 'MONGODB_URI environment variable is missing',
+        envCheck
+      });
+    }
+    
     await connectToDatabase();
     const dbStatus = mongoose.connection.readyState;
     const statusMap = {
@@ -188,14 +208,18 @@ app.get('/api/v1/db-test', async (req, res) => {
       connection: statusMap[dbStatus] || 'unknown',
       database: mongoose.connection.name,
       host: mongoose.connection.host,
-      ready: dbStatus === 1
+      ready: dbStatus === 1,
+      environment: process.env.NODE_ENV,
+      envCheck
     });
   } catch (error) {
     console.error('Database test error:', error);
     res.status(500).json({
       status: 'error',
       message: 'Database connection test failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Database connection error'
+      errorName: error.name,
+      errorMessage: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
