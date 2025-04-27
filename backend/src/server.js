@@ -39,6 +39,69 @@ app.use((req, res, next) => {
   next();
 });
 
+// MongoDB connection - cached connection for serverless environment
+let cachedDb = null;
+
+async function connectToDatabase() {
+  if (cachedDb) {
+    console.log('Using cached database connection');
+    return cachedDb;
+  }
+  
+  try {
+    // Connection options for better serverless performance
+    const options = {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+    };
+    
+    console.log('Connecting to MongoDB...');
+    const client = await mongoose.connect(process.env.MONGODB_URI, options);
+    console.log('Connected to MongoDB');
+    
+    cachedDb = client;
+    return client;
+  } catch (error) {
+    console.error('MongoDB connection error:', error);
+    throw error;
+  }
+}
+
+// Basic health check that doesn't require DB
+app.get('/api/v1/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Basic root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Welcome to Inventory Management System API',
+    status: 'running'
+  });
+});
+
+// Connect to DB before handling routes that need it
+app.use(async (req, res, next) => {
+  // Skip DB connection for basic routes
+  if (req.path === '/' || req.path === '/api/v1/health') {
+    return next();
+  }
+  
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    console.error('Failed to connect to database:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Database connection failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal Server Error'
+    });
+  }
+});
+
 // Routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
@@ -49,6 +112,7 @@ app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/settings', settingsRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // Debug route for notifications
 app.get('/api/v1/debug-notifications', async (req, res) => {
@@ -90,41 +154,20 @@ app.get('/api/v1/debug-notifications', async (req, res) => {
   }
 });
 
-// Main notification routes
-app.use('/api/v1/notifications', notificationRoutes);
-
 // Test endpoint to verify server is working
 app.get('/api/v1/test', (req, res) => {
   res.json({ message: 'Test endpoint is working!' });
 });
 
-// Debug route to verify API is working
-app.get('/api/v1/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Basic root route
-app.get('/', (req, res) => {
-  res.json({ 
-    message: 'Welcome to Inventory Management System API',
-    status: 'running'
-  });
-});
-
 // Global error handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error('Server error:', err.stack);
   res.status(500).json({
     status: 'error',
     message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : {}
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Internal Server Error'
   });
 });
-
-// Database connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('MongoDB connection error:', err));
 
 // For local development
 if (process.env.NODE_ENV !== 'production') {
