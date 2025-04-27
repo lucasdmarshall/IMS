@@ -1,0 +1,529 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import clsx from 'clsx';
+import { X, ArrowLeft } from 'lucide-react';
+import { supplierService } from '../../services/supplierService';
+import { purchaseOrderService } from '../../services/purchaseOrderService';
+
+const PurchaseOrdersSuppliers = () => {
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('purchase-orders');
+  const [suppliers, setSuppliers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  
+  const defaultFormData = {
+    supplier: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    items: [{
+      product: '',
+      quantity: 1,
+      unitPrice: 0,
+      total: 0
+    }],
+    totalAmount: 0,
+    status: 'pending'
+  };
+
+  const [formData, setFormData] = useState(defaultFormData);
+  
+  const handleDelete = async (id, type) => {
+    if (window.confirm(`Are you sure you want to delete this ${type}?`)) {
+      try {
+        setLoading(true);
+        if (type === 'purchase-order') {
+          await purchaseOrderService.deletePurchaseOrder(id);
+          setOrders(orders.filter(order => order._id !== id));
+        } else {
+          await supplierService.deleteSupplier(id);
+          setSuppliers(suppliers.filter(supplier => supplier._id !== id));
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Debug formData changes
+  useEffect(() => {
+    console.log('Form data updated:', formData);
+  }, [formData]);
+
+  useEffect(() => {
+    fetchData();
+    setFormData(defaultFormData);
+  }, [activeTab]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (activeTab === 'purchase-orders') {
+        const [ordersData, suppliersData] = await Promise.all([
+          purchaseOrderService.getAllPurchaseOrders(),
+          supplierService.getAllSuppliers()
+        ]);
+        setOrders(ordersData);
+        setSuppliers(suppliersData);
+      } else {
+        const data = await supplierService.getAllSuppliers();
+        setSuppliers(data);
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6 bg-gradient-to-br from-[#1A2238] to-[#121929] min-h-screen">
+      {/* Back Button */}
+      <div className="mb-4">
+        <button 
+          onClick={() => navigate(-1)}
+          className="flex items-center text-white hover:text-[#40a9ff] transition-all duration-200 hover:scale-105"
+        >
+          <ArrowLeft size={18} className="mr-1" />
+          <span>Back</span>
+        </button>
+      </div>
+
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-white mb-0 font-semibold text-shadow-sm">Purchase Orders & Suppliers</h1>
+        <div className="flex space-x-3 bg-[rgba(255,255,255,0.05)] p-1 rounded-lg backdrop-blur-sm">
+          <button
+            className={clsx("px-4 py-2 rounded-lg transition-all duration-200", 
+              activeTab === 'purchase-orders'
+                ? "bg-[#1890ff] text-white shadow-md"
+                : "text-white hover:bg-[rgba(255,255,255,0.08)]"
+            )}
+            onClick={() => setActiveTab('purchase-orders')}
+          >
+            Purchase Orders
+          </button>
+          <button
+            className={clsx("px-4 py-2 rounded-lg transition-all duration-200", 
+              activeTab === 'suppliers'
+                ? "bg-[#1890ff] text-white shadow-md"
+                : "text-white hover:bg-[rgba(255,255,255,0.08)]"
+            )}
+            onClick={() => setActiveTab('suppliers')}
+          >
+            Suppliers
+          </button>
+        </div>
+        <button
+          className="px-4 py-2 bg-[#1890ff] text-white rounded-lg hover:bg-[#40a9ff] transition-all duration-200 hover:scale-105 hover:shadow-lg border border-[rgba(255,255,255,0.15)]"
+          onClick={async () => {
+            try {
+              if (activeTab === 'purchase-orders') {
+                const data = await supplierService.getAllSuppliers();
+                setSuppliers(data);
+              }
+              setFormData(defaultFormData);
+              setShowModal(true);
+            } catch (err) {
+              setError(err.message || 'Failed to fetch suppliers');
+              console.error('Error fetching suppliers:', err);
+            }
+          }}
+        >
+          {activeTab === 'purchase-orders' ? 'New Purchase Order' : 'Add Supplier'}
+        </button>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-500/20 text-red-500 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="bg-[rgba(255,255,255,0.05)] rounded-lg overflow-hidden shadow-lg border border-[rgba(255,255,255,0.1)] backdrop-blur-md text-white">
+        {loading ? (
+          <div className="p-8 text-center text-white flex flex-col items-center justify-center space-y-2">
+            <div className="w-8 h-8 border-2 border-[#1890ff] border-t-transparent rounded-full animate-spin"></div>
+            <span>Loading...</span>
+          </div>
+        ) : (
+          <table className="w-full border-collapse">
+            <thead className="bg-[rgba(255,255,255,0.08)] text-white">
+              <tr className="border-b border-dark-500">
+                {activeTab === 'purchase-orders' ? (
+                  <>
+                    <th className="py-3 px-4 text-left">No.</th>
+                    <th className="py-3 px-4 text-left">Order ID</th>
+                    <th className="py-3 px-4 text-left">Supplier</th>
+                    <th className="py-3 px-4 text-left">Product Name</th>
+                    <th className="py-3 px-4 text-left">Date</th>
+                    <th className="py-3 px-4 text-left">Status</th>
+                    <th className="py-3 px-4 text-left">Total</th>
+                    <th className="py-3 px-4 text-left">Actions</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="py-3 px-4 text-left">Name</th>
+                    <th className="py-3 px-4 text-left">Contact Person</th>
+                    <th className="py-3 px-4 text-left">Email</th>
+                    <th className="py-3 px-4 text-left">Phone</th>
+                    <th className="py-3 px-4 text-left">Status</th>
+                    <th className="py-3 px-4 text-left">Actions</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-dark-500/50">
+              {activeTab === 'purchase-orders' ? (
+                orders.map((order, index) => (
+                  <tr key={order._id} className="border-b border-dark-500/30 hover:bg-[rgba(255,255,255,0.05)] transition-all duration-200">
+                    <td className="py-3 px-4">{index + 1}</td>
+                    <td className="py-3 px-4">{order._id}</td>
+                    <td className="py-3 px-4">{order.supplier.name}</td>
+                    <td className="py-3 px-4">{order.items[0]?.product || 'N/A'}</td>
+                    <td className="py-3 px-4">
+                      {new Date(order.orderDate).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={clsx("px-3 py-1 rounded-full text-xs font-medium border shadow-sm", 
+                        order.status === 'completed'
+                          ? "bg-[rgba(82,196,26,0.15)] text-[#52c41a] border-[rgba(82,196,26,0.2)]"
+                          : order.status === "pending"
+                          ? "bg-[rgba(250,173,20,0.15)] text-[#faad14] border-[rgba(250,173,20,0.2)]"
+                          : order.status === "cancelled"
+                          ? "bg-[rgba(245,34,45,0.15)] text-[#f5222d] border-[rgba(245,34,45,0.2)]"
+                          : "bg-[rgba(24,144,255,0.15)] text-[#1890ff] border-[rgba(24,144,255,0.2)]"
+                      )}>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">${order.totalAmount.toFixed(2)}</td>
+                    <td className="py-3 px-4">
+                      <button 
+                        className="text-[#f5222d] hover:text-[#ff4d4f] transition-all duration-200 hover:scale-110 inline-flex items-center"
+                        onClick={() => handleDelete(order._id, 'purchase-order')}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                suppliers.map((supplier) => (
+                  <tr key={supplier._id} className="border-b border-dark-500/30 hover:bg-[rgba(255,255,255,0.05)] transition-all duration-200">
+                    <td className="py-3 px-4">{supplier.name}</td>
+                    <td className="py-3 px-4">{supplier.contactPerson || 'N/A'}</td>
+                    <td className="py-3 px-4">{supplier.email || 'N/A'}</td>
+                    <td className="py-3 px-4">{supplier.phone || 'N/A'}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-3 py-1 rounded-full text-xs bg-[rgba(82,196,26,0.15)] text-[#52c41a] font-medium border border-[rgba(82,196,26,0.2)] shadow-sm">
+                        Active
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button 
+                        className="text-[#f5222d] hover:text-[#ff4d4f] transition-all duration-200 hover:scale-110 inline-flex items-center"
+                        onClick={() => handleDelete(supplier._id, 'supplier')}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-[rgba(0,0,0,0.7)] backdrop-blur-md flex items-center justify-center p-4 z-50">
+          <div className="bg-[rgba(255,255,255,0.05)] rounded-lg w-full max-w-lg transform transition-all shadow-xl border border-[rgba(255,255,255,0.1)] overflow-hidden backdrop-filter backdrop-blur-md">
+
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-6 border-b border-[rgba(255,255,255,0.1)]">
+              <h2 className="text-xl font-semibold text-white">
+                {activeTab === 'purchase-orders' ? 'New Purchase Order' : 'Add Supplier'}
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-white transition-all duration-200 hover:rotate-90 hover:scale-110"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 relative">
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setError(null);
+                try {
+                  if (activeTab === 'purchase-orders') {
+                    // Validate required fields
+                    if (!formData.supplier) {
+                      throw new Error('Please select a supplier');
+                    }
+                    if (!formData.items[0].product) {
+                      throw new Error('Please enter a product name');
+                    }
+                    if (!formData.items[0].quantity || formData.items[0].quantity < 1) {
+                      throw new Error('Please enter a valid quantity');
+                    }
+                    if (!formData.items[0].unitPrice || formData.items[0].unitPrice <= 0) {
+                      throw new Error('Please enter a valid unit price');
+                    }
+
+                    // Ensure total is calculated
+                    const total = formData.items[0].quantity * formData.items[0].unitPrice;
+                    const orderData = {
+                      ...formData,
+                      items: [{
+                        ...formData.items[0],
+                        total: total
+                      }],
+                      totalAmount: total
+                    };
+
+                    console.log('Submitting purchase order:', orderData);
+                    await purchaseOrderService.createPurchaseOrder(orderData);
+                  } else {
+                    const data = {
+                      name: formData.name,
+                      contactPerson: formData.contactPerson,
+                      email: formData.email,
+                      phone: formData.phone,
+                      address: formData.address
+                    };
+                    console.log('Submitting supplier:', data);
+                    await supplierService.createSupplier(data);
+                  }
+                  setShowModal(false);
+                  fetchData();
+                } catch (err) {
+                  setError(err.message);
+                  console.error('Error creating record:', err);
+                }
+              }}>
+                {activeTab === 'purchase-orders' ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Supplier
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white focus:outline-none focus:border-[#1890ff] focus:bg-[rgba(255,255,255,0.12)] transition-all duration-200"
+                        value={formData.supplier}
+                        onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+                        required
+                      >
+                        <option value="">Select a supplier</option>
+                        {suppliers.map((supplier) => (
+                          <option key={supplier._id} value={supplier._id}>
+                            {supplier.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Product Details
+                      </label>
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          name="product"
+                          className="w-full px-3 py-2 bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white focus:outline-none focus:border-[#1890ff] focus:bg-[rgba(255,255,255,0.12)] transition-all duration-200"      placeholder="Product name"
+                          value={formData.items[0].product}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            items: [{ ...formData.items[0], product: e.target.value }]
+                          })}
+                          required
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            name="quantity"
+                            className="w-24 px-3 py-2 bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white focus:outline-none focus:border-[#1890ff] focus:bg-[rgba(255,255,255,0.12)] transition-all duration-200"
+                            placeholder="Qty"
+                            min="1"
+                            value={formData.items[0].quantity}
+                            onChange={(e) => {
+                              const qty = parseInt(e.target.value, 10);
+                              const price = formData.items[0].unitPrice;
+                              const total = qty * price;
+                              setFormData({
+                                ...formData,
+                                items: [{
+                                  ...formData.items[0],
+                                  quantity: qty,
+                                  total: total
+                                }],
+                                totalAmount: total
+                              });
+                            }}
+                            required
+                          />
+                          <input
+                            type="number"
+                            name="unitPrice"
+                            className="w-32 px-3 py-2 bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.1)] rounded-lg text-white focus:outline-none focus:border-[#1890ff] focus:bg-[rgba(255,255,255,0.12)] transition-all duration-200"
+                            placeholder="Unit Price"
+                            min="0"
+                            step="0.01"
+                            value={formData.items[0].unitPrice}
+                            onChange={(e) => {
+                              const price = parseFloat(e.target.value);
+                              const qty = formData.items[0].quantity;
+                              const total = qty * price;
+                              setFormData({
+                                ...formData,
+                                items: [{
+                                  ...formData.items[0],
+                                  unitPrice: price,
+                                  total: total
+                                }],
+                                totalAmount: total
+                              });
+                            }}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Total Amount
+                      </label>
+                      <input
+                        type="number"
+                        name="totalAmount"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        value={formData.totalAmount}
+                        readOnly
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        required
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter supplier name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Contact Person
+                      </label>
+                      <input
+                        type="text"
+                        name="contactPerson"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter contact person"
+                        value={formData.contactPerson}
+                        onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Phone
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter phone number"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-white mb-1">
+                        Address
+                      </label>
+                      <textarea
+                        name="address"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter address"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 text-white transition-all duration-200 hover:scale-105 hover:bg-[rgba(255,255,255,0.08)] rounded-lg"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-[#1890ff] text-white rounded-lg hover:bg-[#40a9ff] transition-all duration-200 hover:scale-105 hover:shadow-lg border border-[rgba(255,255,255,0.15)]"
+                  >
+                    {activeTab === 'purchase-orders' ? 'Create Order' : 'Add Supplier'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PurchaseOrdersSuppliers;

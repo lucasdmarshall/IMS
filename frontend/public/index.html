@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <title>Inventory Management System</title>
+    <script>
+      // Reset readNotifications in localStorage for testing
+      if (localStorage.getItem('readNotifications')) {
+        console.log('Resetting readNotifications in localStorage for testing');
+        localStorage.setItem('readNotifications', JSON.stringify([]));
+      }
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

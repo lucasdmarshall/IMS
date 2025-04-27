@@ -1,0 +1,482 @@
+import React, { useState, useEffect } from 'react';
+import { X } from 'lucide-react';
+import { supplierService } from '../../services/supplierService';
+import { purchaseOrderService } from '../../services/purchaseOrderService';
+
+const PurchaseOrdersSuppliers = () => {
+  const [activeTab, setActiveTab] = useState('purchase-orders');
+  const [suppliers, setSuppliers] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [showModal, setShowModal] = useState(false);
+  
+  const defaultFormData = {
+    supplier: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    items: [{
+      product: '',
+      quantity: 1,
+      unitPrice: 0,
+      total: 0
+    }],
+    totalAmount: 0,
+    status: 'pending'
+  };
+
+  const [formData, setFormData] = useState(defaultFormData);
+
+  // Debug formData changes
+  useEffect(() => {
+    console.log('Form data updated:', formData);
+  }, [formData]);
+
+  useEffect(() => {
+    fetchData();
+    setFormData(defaultFormData);
+  }, [activeTab]);
+
+  const fetchData = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      if (activeTab === 'purchase-orders') {
+        const [ordersData, suppliersData] = await Promise.all([
+          purchaseOrderService.getAllPurchaseOrders(),
+          supplierService.getAllSuppliers()
+        ]);
+        setOrders(ordersData);
+        setSuppliers(suppliersData);
+      } else {
+        const data = await supplierService.getAllSuppliers();
+        setSuppliers(data);
+      }
+    } catch (err) {
+      setError(err.message);
+      console.error('Error fetching data:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div className="flex space-x-4">
+          <button
+            className={
+              activeTab === 'purchase-orders'
+                ? 'px-4 py-2 rounded-lg bg-primary-500 text-white'
+                : 'px-4 py-2 rounded-lg text-dark-muted hover:text-dark-foreground'
+            }
+            onClick={() => setActiveTab('purchase-orders')}
+          >
+            Purchase Orders
+          </button>
+          <button
+            className={
+              activeTab === 'suppliers'
+                ? 'px-4 py-2 rounded-lg bg-primary-500 text-white'
+                : 'px-4 py-2 rounded-lg text-dark-muted hover:text-dark-foreground'
+            }
+            onClick={() => setActiveTab('suppliers')}
+          >
+            Suppliers
+          </button>
+        </div>
+        <button
+          className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+          onClick={async () => {
+            try {
+              if (activeTab === 'purchase-orders') {
+                const data = await supplierService.getAllSuppliers();
+                setSuppliers(data);
+              }
+              setFormData(defaultFormData);
+              setShowModal(true);
+            } catch (err) {
+              setError(err.message || 'Failed to fetch suppliers');
+              console.error('Error fetching suppliers:', err);
+            }
+          }}
+        >
+          {activeTab === 'purchase-orders' ? 'New Purchase Order' : 'Add Supplier'}
+        </button>
+      </div>
+
+      {/* Error Message */}
+      {error && (
+        <div className="mb-4 p-4 bg-red-500/20 text-red-500 rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Content */}
+      <div className="bg-dark-400 rounded-lg overflow-hidden">
+        {loading ? (
+          <div className="p-4 text-center text-dark-muted">Loading...</div>
+        ) : (
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-dark-500">
+                {activeTab === 'purchase-orders' ? (
+                  <>
+                    <th className="py-3 px-4 text-left">Order ID</th>
+                    <th className="py-3 px-4 text-left">Supplier</th>
+                    <th className="py-3 px-4 text-left">Date</th>
+                    <th className="py-3 px-4 text-left">Status</th>
+                    <th className="py-3 px-4 text-left">Total</th>
+                    <th className="py-3 px-4 text-left">Actions</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="py-3 px-4 text-left">Name</th>
+                    <th className="py-3 px-4 text-left">Contact Person</th>
+                    <th className="py-3 px-4 text-left">Email</th>
+                    <th className="py-3 px-4 text-left">Phone</th>
+                    <th className="py-3 px-4 text-left">Status</th>
+                    <th className="py-3 px-4 text-left">Actions</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {activeTab === 'purchase-orders' ? (
+                orders.map((order) => (
+                  <tr key={order._id} className="border-b border-dark-500 hover:bg-dark-500/50">
+                    <td className="py-3 px-4">{order._id}</td>
+                    <td className="py-3 px-4">{order.supplier.name}</td>
+                    <td className="py-3 px-4">
+                      {new Date(order.orderDate).toLocaleDateString()}
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={
+                        order.status === 'completed'
+                          ? 'px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-500'
+                          : order.status === 'pending'
+                          ? 'px-2 py-1 rounded-full text-xs bg-yellow-500/20 text-yellow-500'
+                          : order.status === 'cancelled'
+                          ? 'px-2 py-1 rounded-full text-xs bg-red-500/20 text-red-500'
+                          : 'px-2 py-1 rounded-full text-xs bg-blue-500/20 text-blue-500'
+                      }>
+                        {order.status}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">${order.totalAmount.toFixed(2)}</td>
+                    <td className="py-3 px-4">
+                      <button className="text-primary-500 hover:text-primary-600 transition-colors">
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                suppliers.map((supplier) => (
+                  <tr key={supplier._id} className="border-b border-dark-500 hover:bg-dark-500/50">
+                    <td className="py-3 px-4">{supplier.name}</td>
+                    <td className="py-3 px-4">{supplier.contactPerson || 'N/A'}</td>
+                    <td className="py-3 px-4">{supplier.email || 'N/A'}</td>
+                    <td className="py-3 px-4">{supplier.phone || 'N/A'}</td>
+                    <td className="py-3 px-4">
+                      <span className="px-2 py-1 rounded-full text-xs bg-green-500/20 text-green-500">
+                        Active
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <button className="text-primary-500 hover:text-primary-600 transition-colors">
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-dark-400 rounded-lg w-full max-w-lg transform transition-all">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center p-6">
+              <h2 className="text-xl font-semibold text-dark-foreground">
+                {activeTab === 'purchase-orders' ? 'New Purchase Order' : 'Add Supplier'}
+              </h2>
+              <button
+                onClick={() => setShowModal(false)}
+                className="text-dark-muted hover:text-dark-foreground transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 border-t border-dark-500">
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                setError(null);
+                try {
+                  if (activeTab === 'purchase-orders') {
+                    // Validate required fields
+                    if (!formData.supplier) {
+                      throw new Error('Please select a supplier');
+                    }
+                    if (!formData.items[0].product) {
+                      throw new Error('Please enter a product name');
+                    }
+                    if (!formData.items[0].quantity || formData.items[0].quantity < 1) {
+                      throw new Error('Please enter a valid quantity');
+                    }
+                    if (!formData.items[0].unitPrice || formData.items[0].unitPrice <= 0) {
+                      throw new Error('Please enter a valid unit price');
+                    }
+
+                    // Ensure total is calculated
+                    const total = formData.items[0].quantity * formData.items[0].unitPrice;
+                    const orderData = {
+                      ...formData,
+                      items: [{
+                        ...formData.items[0],
+                        total: total
+                      }],
+                      totalAmount: total
+                    };
+
+                    console.log('Submitting purchase order:', orderData);
+                    await purchaseOrderService.createPurchaseOrder(orderData);
+                  } else {
+                    const data = {
+                      name: formData.name,
+                      contactPerson: formData.contactPerson,
+                      email: formData.email,
+                      phone: formData.phone,
+                      address: formData.address
+                    };
+                    console.log('Submitting supplier:', data);
+                    await supplierService.createSupplier(data);
+                  }
+                  setShowModal(false);
+                  fetchData();
+                } catch (err) {
+                  setError(err.message);
+                  console.error('Error creating record:', err);
+                }
+              }}>
+                {activeTab === 'purchase-orders' ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Supplier
+                      </label>
+                      <select
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        value={formData.supplier}
+                        onChange={(e) => setFormData({ ...formData, supplier: e.target.value })}
+                        required
+                      >
+                        <option value="">Select a supplier</option>
+                        {suppliers.map((supplier) => (
+                          <option key={supplier._id} value={supplier._id}>
+                            {supplier.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Product Details
+                      </label>
+                      <div className="space-y-2">
+                        <input
+                          type="text"
+                          name="product"
+                          className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                          placeholder="Product name"
+                          value={formData.items[0].product}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            items: [{ ...formData.items[0], product: e.target.value }]
+                          })}
+                          required
+                        />
+                        <div className="flex gap-2">
+                          <input
+                            type="number"
+                            name="quantity"
+                            className="w-24 px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                            placeholder="Qty"
+                            min="1"
+                            value={formData.items[0].quantity}
+                            onChange={(e) => {
+                              const qty = parseInt(e.target.value, 10);
+                              const price = formData.items[0].unitPrice;
+                              const total = qty * price;
+                              setFormData({
+                                ...formData,
+                                items: [{
+                                  ...formData.items[0],
+                                  quantity: qty,
+                                  total: total
+                                }],
+                                totalAmount: total
+                              });
+                            }}
+                            required
+                          />
+                          <input
+                            type="number"
+                            name="unitPrice"
+                            className="w-32 px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                            placeholder="Unit Price"
+                            min="0"
+                            step="0.01"
+                            value={formData.items[0].unitPrice}
+                            onChange={(e) => {
+                              const price = parseFloat(e.target.value);
+                              const qty = formData.items[0].quantity;
+                              const total = qty * price;
+                              setFormData({
+                                ...formData,
+                                items: [{
+                                  ...formData.items[0],
+                                  unitPrice: price,
+                                  total: total
+                                }],
+                                totalAmount: total
+                              });
+                            }}
+                            required
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Total Amount
+                      </label>
+                      <input
+                        type="number"
+                        name="totalAmount"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        value={formData.totalAmount}
+                        readOnly
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Status
+                      </label>
+                      <select
+                        name="status"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        value={formData.status}
+                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                        required
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="approved">Approved</option>
+                        <option value="completed">Completed</option>
+                        <option value="cancelled">Cancelled</option>
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Name
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter supplier name"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Contact Person
+                      </label>
+                      <input
+                        type="text"
+                        name="contactPerson"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter contact person"
+                        value={formData.contactPerson}
+                        onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Email
+                      </label>
+                      <input
+                        type="email"
+                        name="email"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Phone
+                      </label>
+                      <input
+                        type="tel"
+                        name="phone"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter phone number"
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-dark-foreground mb-1">
+                        Address
+                      </label>
+                      <textarea
+                        name="address"
+                        className="w-full px-3 py-2 bg-dark-500 border border-dark-500 rounded-lg text-dark-foreground focus:outline-none focus:border-primary-500"
+                        placeholder="Enter address"
+                        value={formData.address}
+                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        rows={3}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-6 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowModal(false)}
+                    className="px-4 py-2 text-dark-muted hover:text-dark-foreground transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+                  >
+                    {activeTab === 'purchase-orders' ? 'Create Order' : 'Add Supplier'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PurchaseOrdersSuppliers;
