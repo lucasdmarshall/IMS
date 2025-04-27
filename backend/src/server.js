@@ -3,6 +3,7 @@ const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
 const Notification = require('./models/Notification');
+const path = require('path');
 
 // Load environment variables
 dotenv.config();
@@ -32,6 +33,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Serve favicon and static files to avoid 500 errors
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); // No content response for favicon requests
+});
+
+app.get('/favicon.png', (req, res) => {
+  res.status(204).end(); // No content response for favicon requests
+});
+
 // Request logging middleware
 app.use((req, res, next) => {
   console.log(`Incoming Request: ${req.method} ${req.url}`);
@@ -55,6 +65,8 @@ async function connectToDatabase() {
       useUnifiedTopology: true,
       serverSelectionTimeoutMS: 5000,
       socketTimeoutMS: 45000,
+      autoIndex: false, // Don't build indexes automatically in production
+      maxPoolSize: 10 // Maintain up to 10 socket connections
     };
     
     console.log('Connecting to MongoDB...');
@@ -157,6 +169,35 @@ app.get('/api/v1/debug-notifications', async (req, res) => {
 // Test endpoint to verify server is working
 app.get('/api/v1/test', (req, res) => {
   res.json({ message: 'Test endpoint is working!' });
+});
+
+// Database connection test endpoint
+app.get('/api/v1/db-test', async (req, res) => {
+  try {
+    await connectToDatabase();
+    const dbStatus = mongoose.connection.readyState;
+    const statusMap = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    
+    res.json({
+      status: 'success',
+      connection: statusMap[dbStatus] || 'unknown',
+      database: mongoose.connection.name,
+      host: mongoose.connection.host,
+      ready: dbStatus === 1
+    });
+  } catch (error) {
+    console.error('Database test error:', error);
+    res.status(500).json({
+      status: 'error',
+      message: 'Database connection test failed',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Database connection error'
+    });
+  }
 });
 
 // Global error handler
