@@ -20,6 +20,49 @@ const notificationRoutes = require('./routes/notificationRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 
+// MongoDB connection - better approach for serverless
+let isConnected = false;
+let connectionPromise = null;
+
+const connectToDatabase = async () => {
+  if (isConnected) {
+    console.log('=> Using existing database connection');
+    return Promise.resolve();
+  }
+
+  if (connectionPromise) {
+    await connectionPromise;
+    isConnected = true;
+    return;
+  }
+
+  console.log('=> Using new database connection');
+  
+  try {
+    // Store the connection promise so we can reuse it if multiple requests come in at once
+    connectionPromise = mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      bufferCommands: false,
+      serverSelectionTimeoutMS: 5000,
+      socketTimeoutMS: 45000,
+      family: 4 // Force IPv4
+    });
+    
+    await connectionPromise;
+    isConnected = true;
+    console.log('=> DB Connected');
+    
+    return;
+  } catch (error) {
+    connectionPromise = null;
+    isConnected = false;
+    console.error('=> DB Connection error:', error);
+    throw error;
+  }
+};
+
+// Create Express app
 const app = express();
 
 // Middleware
@@ -49,88 +92,93 @@ app.use((req, res, next) => {
   next();
 });
 
-// MongoDB connection - cached connection for serverless environment
-let cachedDb = null;
-
-async function connectToDatabase() {
-  if (cachedDb) {
-    console.log('Using cached database connection');
-    return cachedDb;
-  }
-  
-  try {
-    // Connection options for better serverless performance
-    const options = {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
-      autoIndex: false, // Don't build indexes automatically in production
-      maxPoolSize: 10 // Maintain up to 10 socket connections
-    };
-    
-    console.log('Connecting to MongoDB...', process.env.MONGODB_URI ? 'URI exists' : 'URI missing');
-    console.log('Connection string format check:', process.env.MONGODB_URI?.startsWith('mongodb+srv://') ? 'Valid format' : 'Invalid format');
-    
-    const client = await mongoose.connect(process.env.MONGODB_URI, options);
-    console.log('Connected to MongoDB successfully');
-    
-    cachedDb = client;
-    return client;
-  } catch (error) {
-    console.error('MongoDB connection error details:', error.name, error.message);
-    console.error('Connection stack:', error.stack);
-    throw error;
-  }
-}
-
-// Basic health check that doesn't require DB
+// Basic health check route - doesn't require DB connection
 app.get('/api/v1/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-});
-
-// Basic root route
-app.get('/', (req, res) => {
   res.json({ 
-    message: 'Welcome to Inventory Management System API',
-    status: 'running'
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'not set'
   });
 });
 
-// Connect to DB before handling routes that need it
-app.use(async (req, res, next) => {
-  // Skip DB connection for basic routes
-  if (req.path === '/' || req.path === '/api/v1/health') {
-    return next();
-  }
+// Basic root route - doesn't require DB connection
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Welcome to Inventory Management System API',
+    status: 'running',
+    environment: process.env.NODE_ENV || 'not set'
+  });
+});
+
+// DB test route that shows environment variable info
+app.get('/api/v1/env-test', (req, res) => {
+  const envInfo = {
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    MONGODB_URI_EXISTS: !!process.env.MONGODB_URI,
+    JWT_SECRET_EXISTS: !!process.env.JWT_SECRET,
+    // Add safe partial info about MongoDB URI if it exists
+    MONGODB_FORMAT: process.env.MONGODB_URI 
+      ? `${process.env.MONGODB_URI.split('@')[0].split(':')[0]}:***@${process.env.MONGODB_URI.split('@')[1] || 'invalid-format'}`
+      : 'missing'
+  };
   
+  res.json({
+    status: 'success',
+    environment: envInfo
+  });
+});
+
+// Database connection test endpoint
+app.get('/api/v1/db-test', async (req, res) => {
   try {
     await connectToDatabase();
-    next();
+    
+    res.json({
+      status: 'success',
+      database: mongoose.connection.name || 'unknown',
+      host: mongoose.connection.host || 'unknown',
+      connected: isConnected,
+      ready: mongoose.connection.readyState === 1
+    });
   } catch (error) {
-    console.error('Failed to connect to database:', error);
-    return res.status(500).json({
+    console.error('Database test error:', error);
+    res.status(500).json({
       status: 'error',
-      message: 'Database connection failed',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal Server Error'
+      message: 'Database connection test failed',
+      errorName: error.name,
+      errorMessage: error.message,
     });
   }
 });
 
-// Routes
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/users', userRoutes);
-app.use('/api/v1/products', productRoutes);
-app.use('/api/v1/orders', orderRoutes);
-app.use('/api/v1/suppliers', supplierRoutes);
-app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
-app.use('/api/v1/reports', reportRoutes);
-app.use('/api/v1/settings', settingsRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
+// Middleware for routes that need database access
+const requireDbConnection = async (req, res, next) => {
+  try {
+    await connectToDatabase();
+    next();
+  } catch (error) {
+    console.error('Database connection error in middleware:', error);
+    return res.status(500).json({
+      status: 'error',
+      message: 'Database connection failed'
+    });
+  }
+};
+
+// Apply requireDbConnection middleware to all API routes except health checks
+app.use('/api/v1/auth', requireDbConnection, authRoutes);
+app.use('/api/v1/users', requireDbConnection, userRoutes);
+app.use('/api/v1/products', requireDbConnection, productRoutes);
+app.use('/api/v1/orders', requireDbConnection, orderRoutes);
+app.use('/api/v1/suppliers', requireDbConnection, supplierRoutes);
+app.use('/api/v1/purchase-orders', requireDbConnection, purchaseOrderRoutes);
+app.use('/api/v1/reports', requireDbConnection, reportRoutes);
+app.use('/api/v1/settings', requireDbConnection, settingsRoutes);
+app.use('/api/v1/dashboard', requireDbConnection, dashboardRoutes);
+app.use('/api/v1/notifications', requireDbConnection, notificationRoutes);
 
 // Debug route for notifications
-app.get('/api/v1/debug-notifications', async (req, res) => {
+app.get('/api/v1/debug-notifications', requireDbConnection, async (req, res) => {
   try {
     // Use a valid MongoDB ObjectId format for testing
     const debugUserId = '000000000000000000000123';
@@ -174,56 +222,6 @@ app.get('/api/v1/test', (req, res) => {
   res.json({ message: 'Test endpoint is working!' });
 });
 
-// Database connection test endpoint
-app.get('/api/v1/db-test', async (req, res) => {
-  try {
-    // First check if environment variables exist
-    const envCheck = {
-      MONGODB_URI: process.env.MONGODB_URI ? 'exists' : 'missing',
-      JWT_SECRET: process.env.JWT_SECRET ? 'exists' : 'missing',
-      NODE_ENV: process.env.NODE_ENV || 'not set'
-    };
-    
-    console.log('Environment check:', envCheck);
-    
-    if (!process.env.MONGODB_URI) {
-      return res.status(500).json({
-        status: 'error',
-        message: 'MONGODB_URI environment variable is missing',
-        envCheck
-      });
-    }
-    
-    await connectToDatabase();
-    const dbStatus = mongoose.connection.readyState;
-    const statusMap = {
-      0: 'disconnected',
-      1: 'connected',
-      2: 'connecting',
-      3: 'disconnecting'
-    };
-    
-    res.json({
-      status: 'success',
-      connection: statusMap[dbStatus] || 'unknown',
-      database: mongoose.connection.name,
-      host: mongoose.connection.host,
-      ready: dbStatus === 1,
-      environment: process.env.NODE_ENV,
-      envCheck
-    });
-  } catch (error) {
-    console.error('Database test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: 'Database connection test failed',
-      errorName: error.name,
-      errorMessage: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
-  }
-});
-
 // Global error handler
 app.use((err, req, res, next) => {
   console.error('Server error:', err.stack);
@@ -234,7 +232,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// For local development
+// For local development only
 if (process.env.NODE_ENV !== 'production') {
   const PORT = process.env.PORT || 5001;
   app.listen(PORT, '0.0.0.0', () => {
