@@ -2,10 +2,10 @@ const express = require('express');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 const cors = require('cors');
-const Notification = require('./models/Notification'); // Corrected case
+const Notification = require('./models/Notification');
 
 // Load environment variables
-dotenv.config({ path: '../.env' });
+dotenv.config();
 
 // Import routes
 const authRoutes = require('./routes/authRoutes');
@@ -17,7 +17,7 @@ const purchaseOrderRoutes = require('./routes/purchaseOrderRoutes');
 const reportRoutes = require('./routes/reportRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
-const dashboardRoutes = require('./routes/dashboardRoutes'); // Import dashboard routes
+const dashboardRoutes = require('./routes/dashboardRoutes');
 
 const app = express();
 
@@ -34,8 +34,8 @@ app.use(express.json());
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`Incoming Request: ${req.method} ${req.url}`); // Log all incoming requests
-  console.log('Request Headers:', req.headers); // Log request headers for debugging
+  console.log(`Incoming Request: ${req.method} ${req.url}`);
+  console.log('Request Headers:', req.headers);
   next();
 });
 
@@ -48,7 +48,7 @@ app.use('/api/v1/suppliers', supplierRoutes);
 app.use('/api/v1/purchase-orders', purchaseOrderRoutes);
 app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/settings', settingsRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes); // Add dashboard route
+app.use('/api/v1/dashboard', dashboardRoutes);
 
 // Debug route for notifications
 app.get('/api/v1/debug-notifications', async (req, res) => {
@@ -93,14 +93,6 @@ app.get('/api/v1/debug-notifications', async (req, res) => {
 // Main notification routes
 app.use('/api/v1/notifications', notificationRoutes);
 
-// Comprehensive route logging
-console.log('Registered Routes:');
-app._router.stack.forEach(function(r){
-  if (r.route && r.route.path){
-    console.log(`${Object.keys(r.route.methods).join(',')} ${r.route.path}`);
-  }
-});
-
 // Test endpoint to verify server is working
 app.get('/api/v1/test', (req, res) => {
   res.json({ message: 'Test endpoint is working!' });
@@ -134,8 +126,13 @@ mongoose.connect(process.env.MONGODB_URI)
   .then(() => console.log('Connected to MongoDB'))
   .catch((err) => console.error('MongoDB connection error:', err));
 
-// Start server
-const PORT = process.env.PORT || 5001;
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const PORT = process.env.PORT || 5001;
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+  });
+}
+
+// Export the Express API for Vercel
+module.exports = app;

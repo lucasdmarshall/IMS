@@ -27,7 +27,7 @@
     "tailwindcss-animate": "^1.0.7"
   },
   "scripts": {
-    "start": "PORT=3002 react-scripts start",
+    "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
@@ -50,7 +50,6 @@
       "last 1 safari version"
     ]
   },
-  "proxy": "http://localhost:5001",
   "devDependencies": {
     "@tailwindcss/forms": "^0.5.7",
     "autoprefixer": "^10.4.17",
