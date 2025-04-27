@@ -31,7 +31,7 @@ This guide will walk you through deploying both the frontend and backend of the 
    - You need to add all the same environment variables from your `.env` file:
      - `MONGODB_URI`: Your MongoDB connection string (from MongoDB Atlas)
      - `JWT_SECRET`: A secure random string for JWT tokens
-     - `PORT`: Not required on Vercel (it's ignored)
+     - `NODE_ENV`: Set to `production`
      - Add any other environment variables your app uses
 
 5. **Deploy**:
@@ -99,6 +99,50 @@ If you prefer to deploy both applications from a single Vercel project:
    - Has a database user with the correct permissions
 
 4. **Build errors**: If you encounter build errors, check the Vercel deployment logs.
+
+## Troubleshooting Serverless Function Errors
+
+If you encounter a 500 error with the message "This Serverless Function has crashed" or "FUNCTION_INVOCATION_FAILED", follow these steps:
+
+1. **Check MongoDB Connection**:
+   - Verify that your MongoDB Atlas connection string is correct
+   - Make sure your MongoDB Atlas cluster is running
+   - Ensure that your MongoDB Atlas cluster allows connections from anywhere (0.0.0.0/0) or from Vercel's IP ranges
+   - Check that your database user credentials are correct
+
+2. **Check Environment Variables**:
+   - In Vercel dashboard, go to your project settings
+   - Navigate to the "Environment Variables" section
+   - Verify that MONGODB_URI and JWT_SECRET are set correctly
+   - Make sure there are no typos or trailing spaces in your variables
+
+3. **View Function Logs**:
+   - In Vercel dashboard, go to your project
+   - Click on "Functions" tab
+   - Find the function that's failing and click on it
+   - Check the error logs for specific error messages
+
+4. **Common Fixes**:
+   - If you see "MongoNetworkError", it's likely a connection issue to MongoDB Atlas
+   - If you see "MongooseServerSelectionError", your MongoDB Atlas cluster might be unreachable from Vercel
+   - Make sure your MongoDB Atlas cluster doesn't have IP address restrictions that would block Vercel
+
+5. **Test Database Connection Separately**:
+   - Create a simple test function in your app:
+   ```javascript
+   app.get('/api/v1/db-test', async (req, res) => {
+     try {
+       await mongoose.connection.db.admin().ping();
+       res.json({ status: 'Database connection successful' });
+     } catch (error) {
+       res.status(500).json({ 
+         status: 'error', 
+         message: 'Database connection failed',
+         error: error.message
+       });
+     }
+   });
+   ```
 
 ## Verifying the Deployment
 
